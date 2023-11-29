@@ -85,7 +85,7 @@ fn test_simple_transfer() -> anyhow::Result<()> {
     }
     .into();
 
-    // 証明のためのデータ作成
+    // 証明のためのデータ作成(送信側)
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
         transactions_trie: HashedPartialTrie::from(Node::Empty),
@@ -159,17 +159,21 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         Nibbles::from_str("0x80").unwrap(),
         rlp::encode(&receipt_0).to_vec(),
     );
+    
     let transactions_trie: HashedPartialTrie = Node::Leaf {
         nibbles: Nibbles::from_str("0x80").unwrap(),
         value: txn.to_vec(),
     }
     .into();
 
+    // 証明のためのデータ作成(受信側)
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
+    
+    // 証明のためのデータ作成
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -190,10 +194,14 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         addresses: vec![],
     };
 
+    // prove中のパフォーマンスを調査する
     let mut timing = TimingTree::new("prove", log::Level::Debug);
+    // ZKのprove(証明)をここでやる。EVMが正しい挙動をしているという証明をしている
     let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    // 100ms以上の処理時間がかかったもののみを出力
     timing.filter(Duration::from_millis(100)).print();
 
+    // proof(証拠)のverify(検証)もやっておく
     verify_proof(&all_stark, proof, &config)
 }
 
