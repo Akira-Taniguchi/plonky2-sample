@@ -35,30 +35,57 @@ fn test_simple_transfer() -> anyhow::Result<()> {
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
 
+    // ブロック生成報酬を受け取るアドレス
     let beneficiary = hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+    // アドレス定義
+    // 0x2c7536e3605d9c16a7a3d7b1898e529396a65c23
+    // から
+    // 0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0
+    // に送金する
     let sender = hex!("2c7536e3605d9c16a7a3d7b1898e529396a65c23");
     let to = hex!("a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0");
 
+    // ステートキーを作成している
+    // Ethereumは各アカウントの状態をState Trieというデータ構造で管理しており、
+    // このState Trieで特定のアカウントの情報にアクセスするため、
+    // ステートキーを使用している
     let sender_state_key = keccak(sender);
     let to_state_key = keccak(to);
-
+    
+    // nibblesを生成
+    // ニブルとは、半バイト（4ビット）のことで、1バイトのデータを2つのニブルに分割することができる。
+    // 後のデータ構造やアルゴリズム内での扱いを効率よくするためにやる
     let sender_nibbles = Nibbles::from_bytes_be(sender_state_key.as_bytes()).unwrap();
     let to_nibbles = Nibbles::from_bytes_be(to_state_key.as_bytes()).unwrap();
 
+    // アカウントを初期化
+    // AccountRlpはEtuereumにおけるアカウントの状態を表すデータ構造
+    // トランザクションの処理やアカウントの状態変更をシミュレートする際に利用する
     let sender_account_before = AccountRlp {
         nonce: 5.into(),
         balance: eth_to_wei(100_000.into()),
         storage_root: HashedPartialTrie::from(Node::Empty).hash(),
         code_hash: keccak([]),
     };
+    // アカウント初期化受信側
     let to_account_before = AccountRlp::default();
 
+    // EthereumではBitcoinのようなシンプルなMerkle Treeではなく、Merkle Patricia Trieという木構造が利用されている
+    // https://docs.rs/eth_trie_utils/0.3.0/eth_trie_utils/partial_trie/enum.PartialTrie.html
+    // キーと値のペアを効率的に管理し、検索することができる。また、Markle Treeと違い、部分更新が可能
+    // ここでは最下層のデータを作成している。
+    // nibblesがキーでvalueがデータ
     let state_trie_before = Node::Leaf {
         nibbles: sender_nibbles,
+        // RLPエンコードとは、Recursive Length Prefixの略で、Ethereumでよく利用されている
+        // >RLPは高度に最小化したシリアライゼーションフォーマットで、ネストされたByte配列を保存する目的のためにある。
+        // >protobufやBSONなどとは違って、BooleanやFloat、DoubleやIntegerさえ定義しない
+        // らしい
         value: rlp::encode(&sender_account_before).to_vec(),
     }
     .into();
 
+    // 証明のためのデータ作成
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
         transactions_trie: HashedPartialTrie::from(Node::Empty),
@@ -66,10 +93,11 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         storage_tries: vec![],
     };
 
-    // Generated using a little py-evm script.
+    // senderからtoに送金した時のトランザクションデータをバイト列に変換したもの
     let txn = hex!("f861050a8255f094a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0648242421ba02c89eb757d9deeb1f5b3859a9d4d679951ef610ac47ad4608dc142beb1b7e313a05af7e9fbab825455d36c36c7f4cfcafbeafa9a77bdff936b52afb36d4fe4bcdd");
     let value = U256::from(100u32);
 
+    // タイムスタンプ、ブロック番号などのブロック情報
     let block_metadata = BlockMetadata {
         block_beneficiary: Address::from(beneficiary),
         block_timestamp: 0x03e8.into(),
@@ -83,9 +111,11 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         block_bloom: [0.into(); 8],
     };
 
+    // コントラクトは今回は関係ない
     let mut contract_code = HashMap::new();
     contract_code.insert(keccak(vec![]), vec![]);
 
+    // Merkle Patricia Trieのデータを作成
     let expected_state_trie_after: HashedPartialTrie = {
         let txdata_gas = 2 * 16;
         let gas_used = 21_000 + txdata_gas;
