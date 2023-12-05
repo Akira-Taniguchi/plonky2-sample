@@ -32,6 +32,9 @@ fn test_simple_transfer() -> anyhow::Result<()> {
     // 初期設定
     // stark関連のスタンダードな設定をここで行う。
     // snarkと違い、starkは大量のデータや複雑な計算に対しても効率的に動作する
+    //
+    // SNARK は任意の計算に適応できる
+    // 繰り返し構造のある計算においては、STARKのほうが効率的
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
 
