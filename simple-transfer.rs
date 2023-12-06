@@ -34,7 +34,12 @@ fn test_simple_transfer() -> anyhow::Result<()> {
     // snarkと違い、starkは大量のデータや複雑な計算に対しても効率的に動作する
     //
     // SNARK は任意の計算に適応できる
+    // 秘密鍵などの特定の知識を開示せず、証明者と検証者のいずれとも対話せずに、
+    // その知識の所有権を短時間かつ少ない計算量で証明できる非対話ゼロ知識証明の技術
+    //
     // 繰り返し構造のある計算においては、STARKのほうが効率的
+    // また、snark(js)のときのような、Trusted Setup(特定のサーキットに特化した証明キーと検証キーが生成)が
+    // 必要ない
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
 
@@ -151,18 +156,20 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         .into()
     };
 
+    // イーサリアムブロックチェーンに関連するデータ構造
     let receipt_0 = LegacyReceiptRlp {
         status: true,
         cum_gas_used: 21032.into(),
         bloom: vec![0; 256].into(),
         logs: vec![],
     };
+    // トランザクションの実行結果
     let mut receipts_trie = HashedPartialTrie::from(Node::Empty);
     receipts_trie.insert(
         Nibbles::from_str("0x80").unwrap(),
         rlp::encode(&receipt_0).to_vec(),
     );
-    
+    // ブロック内のトランザクションを格納するトランザクショントライ
     let transactions_trie: HashedPartialTrie = Node::Leaf {
         nibbles: Nibbles::from_str("0x80").unwrap(),
         value: txn.to_vec(),
